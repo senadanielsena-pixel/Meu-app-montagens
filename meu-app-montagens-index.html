@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111827">
+<title>Meu App Montagens</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:#fff;padding:22px 18px;border-radius:0 0 22px 22px}
+h1{margin:0;font-size:25px}header p{margin:6px 0 0;opacity:.8}
+main{max-width:720px;margin:auto;padding:16px}
+.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px #00000012}
+h2{font-size:18px;margin:0 0 12px}
+label{display:block;font-size:13px;font-weight:bold;margin:10px 0 5px}
+input,textarea,button{width:100%;font:inherit;border-radius:11px;padding:12px;border:1px solid #d1d5db}
+textarea{min-height:80px;resize:vertical}
+button{border:0;background:#111827;color:#fff;font-weight:bold;cursor:pointer;margin-top:10px}
+button.secondary{background:#e5e7eb;color:#111827}
+button.danger{background:#b91c1c}
+.timer{font-size:30px;text-align:center;font-weight:bold;padding:10px}
+.status{text-align:center;font-weight:bold;margin:5px 0 10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#f9fafb;padding:12px;border-radius:12px;text-align:center}
+.stat b{display:block;font-size:24px;margin-top:3px}
+.item{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-top:10px}
+.item strong{font-size:16px}.muted{color:#6b7280;font-size:13px}
+.row{display:flex;gap:8px}.row button{flex:1}
+@media(max-width:420px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔧 Meu App Montagens</h1>
+  <p>Controle suas montagens, horários e produção mensal</p>
+</header>
+
+<main>
+<section class="card">
+<h2>Nova montagem</h2>
+<label>Cliente</label><input id="cliente" placeholder="Nome do cliente">
+<label>Produto / móvel</label><input id="produto" placeholder="Ex.: Guarda-roupa">
+<label>Quantidade</label><input id="quantidade" type="number" min="1" value="1">
+<label>Observações</label><textarea id="obs" placeholder="Observações da montagem"></textarea>
+<div class="status" id="status">Pronto para iniciar</div>
+<div class="timer" id="timer">00:00:00</div>
+<div class="row">
+<button id="iniciar">▶ Iniciar montagem</button>
+<button id="finalizar" class="secondary" disabled>⏹ Finalizar</button>
+</div>
+</section>
+
+<section class="card">
+<h2>Resumo do mês</h2>
+<div class="grid">
+<div class="stat">Montagens<b id="totalMontagens">0</b></div>
+<div class="stat">Peças/produtos<b id="totalQtd">0</b></div>
+<div class="stat">Horas trabalhadas<b id="totalHoras">0h 00m</b></div>
+<div class="stat">Tempo médio<b id="media">0m</b></div>
+</div>
+</section>
+
+<section class="card">
+<h2>Histórico</h2>
+<div id="historico"><p class="muted">Nenhuma montagem registrada neste mês.</p></div>
+<button class="danger" id="limpar">Limpar histórico do mês</button>
+</section>
+</main>
+
+<script>
+const KEY="meu_app_montagens_v1";
+let registros=JSON.parse(localStorage.getItem(KEY)||"[]");
+let inicio=null, timerId=null;
+
+const $=id=>document.getElementById(id);
+function salvar(){localStorage.setItem(KEY,JSON.stringify(registros));}
+function fmtDate(d){return new Date(d).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});}
+function duracao(ms){
+  let s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600);s%=3600;
+  let m=Math.floor(s/60);s%=60;
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+}
+function render(){
+ const agora=new Date(), ym=agora.getFullYear()+"-"+String(agora.getMonth()+1).padStart(2,"0");
+ const mes=registros.filter(r=>r.inicio.slice(0,7)===ym);
+ $("totalMontagens").textContent=mes.length;
+ $("totalQtd").textContent=mes.reduce((a,r)=>a+Number(r.quantidade||1),0);
+ const total=mes.reduce((a,r)=>a+(r.fim-r.inicio),0);
+ $("totalHoras").textContent=Math.floor(total/3600000)+"h "+String(Math.floor(total/60000)%60).padStart(2,"0")+"m";
+ $("media").textContent=mes.length?Math.round(total/mes.length/60000)+"m":"0m";
+ $("historico").innerHTML=mes.length?mes.slice().reverse().map((r,i)=>`
+ <div class="item">
+ <strong>${esc(r.produto||"Montagem")}</strong> — ${esc(r.cliente||"Sem cliente")}
+ <div class="muted">📅 ${fmtDate(r.inicio)}</div>
+ <div>⏱ ${duracao(r.fim-r.inicio)} · Quantidade: ${r.quantidade}</div>
+ ${r.obs?`<div class="muted">📝 ${esc(r.obs)}</div>`:""}
+ </div>`).join(""):'<p class="muted">Nenhuma montagem registrada neste mês.</p>';
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function updateTimer(){
+ if(!inicio)return;
+ $("timer").textContent=duracao(Date.now()-inicio);
+}
+$("iniciar").onclick=()=>{
+ if(inicio)return;
+ inicio=Date.now(); clearInterval(timerId); timerId=setInterval(updateTimer,1000);
+ $("status").textContent="🔴 Montagem em andamento";
+ $("iniciar").disabled=true;$("finalizar").disabled=false;$("finalizar").className="";
+};
+$("finalizar").onclick=()=>{
+ if(!inicio)return;
+ const fim=Date.now();
+ registros.push({
+  cliente:$("cliente").value.trim(),
+  produto:$("produto").value.trim(),
+  quantidade:Math.max(1,Number($("quantidade").value)||1),
+  obs:$("obs").value.trim(),inicio,fim
+ });
+ salvar();inicio=null;clearInterval(timerId);$("timer").textContent="00:00:00";
+ $("status").textContent="Montagem registrada ✅";
+ $("iniciar").disabled=false;$("finalizar").disabled=true;$("finalizar").className="secondary";
+ $("cliente").value="";$("produto").value="";$("quantidade").value=1;$("obs").value="";
+ render();
+};
+$("limpar").onclick=()=>{
+ if(confirm("Apagar todas as montagens deste mês?")){
+  const ym=new Date().toISOString().slice(0,7);
+  registros=registros.filter(r=>r.inicio.slice(0,7)!==ym);salvar();render();
+ }
+};
+render();
+</script>
+</body>
+</html>
